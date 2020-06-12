@@ -422,33 +422,6 @@ def load_horn_db_from_file(fname):
     #import pdb; pdb.set_trace()
     return db
 
-"""def copy_horn_db_mk_ts(origdb):
-    import copy
-    db = copy.deepcopy(origdb)
-    db._sealed = False
-    def is_ts_hornrule(rule):
-        body_uninterp = False
-        body = rule._body
-        for i in range(len(body)):
-            f = body[i]
-            if z3.is_app(f) and f.decl() in rule._rels:
-                body_uninterp = True
-            else:
-                break
-
-        h = rule._head
-        head_uninterp = z3.is_app(h) and h.decl() in rule._rels
-        return body_uninterp and head_uninterp
-    
-    for r in db._rules:
-        if is_ts_hornrule(r):
-            #r._bound_constants.append(z3.Const('U', z3.RealSort()))
-            print("Trans: " + r._formula.sexpr())
-        else:
-            print("Not trans: " + r._formula.sexpr())
-    db.seal()
-    return db"""
-
 def copy_horn_db_mk_pinit(origdb, newParList=[z3.Const('U', z3.RealSort())]):
     import copy
     db = copy.deepcopy(origdb)
@@ -520,21 +493,6 @@ def swap_const_U(rule, param):
             body[i] = val0 > val1
             return True
     return False
-
-    """for i in range(len(body)):
-        e = body[i]
-        if z3.is_expr(e) and e.decl().kind() != z3.Z3_OP_UNINTERPRETED:
-            #children = e.children()
-            for k in range(e.num_args()):
-                val = e.arg(k)
-                if z3.is_const(val) \
-                    and (val.decl().kind() == z3.Z3_OP_ANUM or val.decl().kind() == z3.Z3_OP_AGNUM):
-                    #Otherwise: and val.decl().kind() != z3.Z3_OP_UNINTERPRETED:
-                    #i.e. is fixed value!
-                    valnew = z3.Const('U', z3.RealSort())
-                    body[i] = e.arg(0) > valnew
-                    return True #success
-    return False"""
 
 
 def is_rule_pre(rule):
