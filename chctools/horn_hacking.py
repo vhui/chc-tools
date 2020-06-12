@@ -446,6 +446,7 @@ def copy_horn_db_mk_pinit(origdb, newParList=[z3.Const('U', z3.RealSort())]):
         
     firstRule = HornRule(z3.ForAll(newParList, \
         z3.Implies(z3.BoolVal(True), pInit(*newParList))))
+    firstRule._update()
     firstRule.mk_formula()
     db.add_rule(firstRule)
     db.seal()
@@ -538,12 +539,8 @@ def replace_func(rule, Ulist):
 
 #############################################################################
 
-
 # wrapper to solve CHC constraints and extract result
 def solve_horn(chc, pp=False, q3=False, max_unfold=10, verbosity=0, debug=False):
-    z3.set_param(proof=True)
-    z3.set_param(model=True)
-    
     z3.set_param(verbose=verbosity)
 
     if debug:
@@ -602,6 +599,9 @@ def main():
     rules = [r.mk_formula() for r in db2.get_rules()]
     print_chc_smt(db2)
 
+    z3.set_param(proof=True)
+    z3.set_param(model=True)
+    
     #Modify pInit base here!
     res, answer = solve_horn(rules, verbosity=1, debug=True, max_unfold=1000)
     
