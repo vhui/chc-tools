@@ -422,13 +422,17 @@ def load_horn_db_from_file(fname):
     #import pdb; pdb.set_trace()
     return db
 
-def copy_horn_db_mk_pinit(origdb, newParList=[z3.Const('U', z3.RealSort())]):
+def copy_horn_db_mk_pinit(origdb, newParList=[z3.Const('U', z3.RealSort())], pInitPre=z3.BoolVal(True)):
     import copy
     db = copy.deepcopy(origdb)
     db._sealed = False
     db._rels_set = frozenset()
     db._rels = dict()
     db._fp = False
+
+    pInit = z3.Function('pInit', *([p.sort() for p in newParList] + [z3.IntSort()] + [z3.BoolSort()]))
+    PInitForm0 = pInit(*(newParList + [0]))
+    PInitForm1 = pInit(*(newParList + [1]))
 
     for r in db._rules:
         r = replace_func(r, newParList)
@@ -439,16 +443,22 @@ def copy_horn_db_mk_pinit(origdb, newParList=[z3.Const('U', z3.RealSort())]):
                     print("Could not swap in U.")
                     return
             
-            pInit = z3.Function('pInit', *([p.sort() for p in newParList] + [z3.BoolSort()]))
             r._rels.append(pInit)
-            r._body.append(pInit(*newParList))
+            r._body.append(PInitForm1)
             r._formula = r.mk_formula()
-        
+
+    secondRule = HornRule(z3.ForAll(newParList, \
+        z3.Implies(PInitForm0, PInitForm1)))
+    secondRule._update()
+    secondRule.mk_formula()
+    db.add_rule(secondRule)
+
     firstRule = HornRule(z3.ForAll(newParList, \
-        z3.Implies(z3.BoolVal(True), pInit(*newParList))))
+    z3.Implies(pInitPre, PInitForm0)))
     firstRule._update()
     firstRule.mk_formula()
     db.add_rule(firstRule)
+
     db.seal()
     return db
 
@@ -465,7 +475,7 @@ def swap_const_U(rule, param):
             return True
         return False
 
-    for i in range(len(body)): #TODO: Remove Assumption: HACKY SPECIAL CASES
+    for i in range(len(body)): #TODO: Remove Assumption: HACKY SPECIAL CASES #reversed to swap diff
         e = body[i]
         if z3.is_expr(e) and e.decl().kind() == z3.Z3_OP_EQ:
             #for j in range(e.num_args()):
@@ -578,7 +588,7 @@ def solve_horn(chc, pp=False, q3=False, max_unfold=10, verbosity=0, debug=False)
     if res == z3.sat:
         answer = s.model()
     elif res == z3.unsat:
-        answer = s.proof()
+        answer = None #s.proof()
     #import pdb; pdb.set_trace()
     return res, answer
 
@@ -592,18 +602,65 @@ def print_chc_smt(horndb):
     print("(check-sat)\n(get-proof)\n(get-model)\n(exit)")
 
 def main():
+    env = pysmt.environment.get_env()
+    mgr = env.formula_manager
+    converter = pyz3.Z3Converter(env, z3.get_ctx(None))
+
+    constONE = mgr.Int(1)
+    newPars=[mgr.Symbol('U', pysmt.typing.REAL)]
+    newParsZ3 = [converter.convert(param) for param in newPars]
+
     db = load_horn_db_from_file(sys.argv[1])
-    db2 = copy_horn_db_mk_pinit(db)
+    db2 = copy_horn_db_mk_pinit(db, newParList=newParsZ3)
     #print(db2._rels)
     #modify_init_rule(db2)
-    rules = [r.mk_formula() for r in db2.get_rules()]
-    print_chc_smt(db2)
 
-    z3.set_param(proof=True)
-    z3.set_param(model=True)
-    
-    #Modify pInit base here!
-    res, answer = solve_horn(rules, verbosity=1, debug=True, max_unfold=1000)
+    def extractPob():
+        #LOOP this
+        #Track symbols: new params to Spacer placeholder
+        #substitute (placeholder -> param) in extracted pobs
+        pinitRel = db2.get_rel('pInit')
+        #pobF = io.StringIO("(and (= pInit_1_n 1) (< pInit_0_n 0.0))")
+        with open("spacer.log", "r") as f:
+            lines = f.readlines()
+            from trace_parsing import parse
+            all_events = parse(lines)
+            pobF = io.StringIO(all_events[len(all_events)-1]['expr'])
+            
+        unblockedPob = pinitRel.pysmt_parse_lemma(pobF)
+
+        param_substs = {}
+        for i in range(len(newPars)): #pinitRel._mk_lemma_arg_name(i) #Use if name desired
+            param_substs[pinitRel._pysmt_sig[i]] = newPars[i]
+        param_substs[pinitRel._pysmt_sig[len(newPars)]] = constONE #z3.IntVal(1)
+        #maybe target should be pysmt symbol instead?
+        substituter = pysmt.substituter.MGSubstituter(env) #TODO: check this?
+        substitutedPob = substituter.substitute(unblockedPob, param_substs)
+        unblockedPobZ3 = converter.convert(substitutedPob)
+        pobToBlock = z3.simplify(z3.Not(unblockedPobZ3)) #TODO: simplify necessary?
+        return pobToBlock
+
+    unBlocked = z3.BoolVal(True)
+    c = 0
+    while c < 20:
+        rules = [r.mk_formula() for r in db2.get_rules()]
+        print_chc_smt(db2)
+
+        # SOLVE
+        z3.set_param(proof=True)
+        z3.set_param(model=True)
+        #Modify pInit base here!
+        res, answer = solve_horn(rules, verbosity=0, debug=True, max_unfold=1000)
+
+        if res == z3.unsat:
+            blockInit = extractPob()
+            unBlocked = z3.And(unBlocked, blockInit)
+            db2._rules[-1]._body.append(blockInit)
+            db2._rules[-1]._formula = None
+            db2._rules[-1].mk_formula()
+            c = c + 1
+        elif res == z3.sat:
+            break
     
     return 0
 
