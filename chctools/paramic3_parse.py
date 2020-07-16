@@ -53,7 +53,7 @@ def main():
     trvars, tr = parse_formula(TRPATH)
     propvars, prop = parse_formula(PROPPATH)
 
-    allvar_names = set()
+    """allvar_names = set()
     allvars = []
     for var in initvars:
         if var.decl().name() not in allvar_names:
@@ -66,7 +66,7 @@ def main():
     for var in propvars:
         if var.decl().name() not in allvar_names:
             allvar_names.add(var.decl().name())
-            allvars.append(var)
+            allvars.append(var)"""
 
     pre_post = {}
     prevars = []
@@ -85,13 +85,16 @@ def main():
             postvars.append(var)
 
     #allvars.update(initvars); allvars.update(trvars); allvars.update(propvars)
-    pinitDb = mk_pinit_db(allvars, prevars, postvars, init, tr, prop, param_list=parsymbols)
+    pinitDb = mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, param_list=parsymbols)
 
-    from horn_hacking import main as do_blocking
-    do_blocking(pinitDb)
+    from horn_hacking import print_chc_smt
+    print_chc_smt(pinitDb)
+
+    #from horn_hacking import main as do_blocking
+    #do_blocking(pinitDb)
     
 
-def mk_pinit_db(allvars, prevars, postvars, init, tr, prop, name='initDb', param_list=[z3.Const('U', z3.RealSort())], pInitPre=z3.BoolVal(True)):
+def mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, name='initDb', param_list=[z3.Const('U', z3.RealSort())], pInitPre=z3.BoolVal(True)):
     from horn_hacking import HornClauseDb, HornRule
     db = HornClauseDb(name)
     #db.load_from_fp(fp, queries)
@@ -120,19 +123,19 @@ def mk_pinit_db(allvars, prevars, postvars, init, tr, prop, name='initDb', param
     secondRule.mk_formula()
     db.add_rule(secondRule)
 
-    thirdRule = HornRule(z3.ForAll(allvars, \
+    thirdRule = HornRule(z3.ForAll(initvars, \
         z3.Implies(z3.And(PInitForm1, init), InvPre)))
     thirdRule._update()
     thirdRule.mk_formula()
     db.add_rule(thirdRule)
 
-    fourRule = HornRule(z3.ForAll(allvars, \
+    fourRule = HornRule(z3.ForAll(trvars, \
         z3.Implies(z3.And(InvPre, tr), InvPost)))
     fourRule._update()
     fourRule.mk_formula()
     db.add_rule(fourRule)
 
-    fifthRule = HornRule(z3.ForAll(allvars, \
+    fifthRule = HornRule(z3.ForAll(propvars, \
         z3.Implies(z3.And(InvPre, z3.Not(prop)), z3.BoolVal(False))))
     fifthRule._update()
     fifthRule.mk_formula()
