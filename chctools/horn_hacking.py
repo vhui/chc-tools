@@ -296,7 +296,6 @@ class HornClauseDb(object):
 
     def add_rule(self, horn_rule):
         self._sealed = False
-        #if SMTLib desired:
         if False: #horn_rule.is_query():
             if self._simple_query and not horn_rule.is_simple_query():
                 query, rule = horn_rule.split_query()
@@ -306,16 +305,6 @@ class HornClauseDb(object):
                 self._queries.append(horn_rule)
         else:
             self._rules.append(horn_rule)
-        """#if FIXEDpoint desired:
-        if horn_rule.is_query():
-            if self._simple_query and not horn_rule.is_simple_query():
-                query, rule = horn_rule.split_query()
-                self._rules.append(rule)
-                self._queries.append(query)
-            else:
-                self._queries.append(horn_rule)
-        else:
-            self._rules.append(horn_rule)"""
 
     def get_rels(self):
         self.seal()
@@ -612,7 +601,7 @@ def print_chc_smt(horndb):
     print(fp2.sexpr())
     print("(check-sat)\n(get-proof)\n(get-model)\n(exit)")
 
-def main(initialDb=None):
+def main():
     env = pysmt.environment.get_env()
     mgr = env.formula_manager
     converter = pyz3.Z3Converter(env, z3.get_ctx(None))
@@ -621,23 +610,20 @@ def main(initialDb=None):
     newPars=[mgr.Symbol('U', pysmt.typing.REAL)]
     newParsZ3 = [converter.convert(param) for param in newPars]
 
-    if initialDb:
-        db2 = initialDb
-    else:
-        db = load_horn_db_from_file(sys.argv[1])
-        db2 = copy_horn_db_mk_pinit(db, newParList=newParsZ3)
-        #print(db2._rels)
-        #modify_init_rule(db2)
+    db = load_horn_db_from_file(sys.argv[1])
+    db2 = copy_horn_db_mk_pinit(db, newParList=newParsZ3)
+    #print(db2._rels)
+    #modify_init_rule(db2)
 
-    def extractPob(pinitDb):
+    def extractPob():
         #LOOP this
         #Track symbols: new params to Spacer placeholder
         #substitute (placeholder -> param) in extracted pobs
-        pinitRel = pinitDb.get_rel('pInit')
+        pinitRel = db2.get_rel('pInit')
         #pobF = io.StringIO("(and (= pInit_1_n 1) (< pInit_0_n 0.0))")
         with open("spacer.log", "r") as f:
             lines = f.readlines()
-            from trace_parsing import parse #can AVOID by parsing last line!
+            from trace_parsing import parse
             all_events = parse(lines)
             pobF = io.StringIO(all_events[len(all_events)-1]['expr'])
             
@@ -654,12 +640,12 @@ def main(initialDb=None):
         pobToBlock = z3.simplify(z3.Not(unblockedPobZ3)) #TODO: simplify necessary?
         return pobToBlock
 
-
     unBlocked = z3.BoolVal(True)
     c = 0
-    while c < 10:
+    while c < 20:
         rules = [r.mk_formula() for r in db2.get_rules()]
         print_chc_smt(db2)
+
         # SOLVE
         z3.set_param(proof=True)
         z3.set_param(model=True)
@@ -667,19 +653,16 @@ def main(initialDb=None):
         res, answer = solve_horn(rules, verbosity=0, debug=True, max_unfold=1000)
 
         if res == z3.unsat:
-            compBlockInit = extractPob(db2)
-            unBlocked = z3.And(unBlocked, compBlockInit)
-            db2._rules[-1]._body.append(compBlockInit)
+            blockInit = extractPob()
+            unBlocked = z3.And(unBlocked, blockInit)
+            db2._rules[-1]._body.append(blockInit)
             db2._rules[-1]._formula = None
             db2._rules[-1].mk_formula()
             c = c + 1
         elif res == z3.sat:
-            print(answer)
             break
     
     return 0
-    
-
 
 if __name__ == '__main__':
     sys.exit(main())
