@@ -74,7 +74,8 @@ class Event (object):
             assert(label1=="exprID:")
             self.exprID = int(exprID)
             assert(label2=="pobID:")
-            self.pobID = int(pobID)
+            #self.pobID = int(pobID)
+            self.pobID = -1 if (pobID == 'none') else int(pobID)
             self.event_type = EType.ADD_LEM
         elif self.lines[0].startswith("Propagating"):
             self.event_type = EType.PRO_LEM

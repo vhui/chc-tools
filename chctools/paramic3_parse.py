@@ -4,7 +4,7 @@ import sys
 import z3
 import pysmt
 import pysmt.solvers.z3 as pyz3
-import pysmt.typing as type
+import pysmt.typing as pytype
 
 from pysmt.smtlib.parser import SmtLibParser
 
@@ -36,8 +36,8 @@ def main():
     with open(PARAMPATH, "r") as f:
         param_lines = f.readlines()
         parnames = [param.strip() for param in param_lines]
-        parsymbols = [mgr.Symbol(name, type.REAL) for name in parnames]
-        parsymbols = [converter.convert(par) for par in parsymbols]
+        parsymbols = [mgr.Symbol(name, pytype.REAL) for name in parnames]
+        parsymbolsZ3 = [converter.convert(par) for par in parsymbols]
     
 
     def parse_formula(filePath):
@@ -85,13 +85,10 @@ def main():
             postvars.append(var)
 
     #allvars.update(initvars); allvars.update(trvars); allvars.update(propvars)
-    pinitDb = mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, param_list=parsymbols)
+    pinitDb = mk_pinit_db(allvars, prevars, postvars, init, tr, prop, param_list=parsymbolsZ3)
 
-    from horn_hacking import print_chc_smt
-    print_chc_smt(pinitDb)
-
-    #from horn_hacking import main as do_blocking
-    #do_blocking(pinitDb)
+    from horn_hacking import main as do_blocking
+    do_blocking(pinitDb, newPars=parsymbols)
     
 
 def mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, name='initDb', param_list=[z3.Const('U', z3.RealSort())], pInitPre=z3.BoolVal(True)):
@@ -111,19 +108,7 @@ def mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, n
 
     ########################
 
-    firstRule = HornRule(z3.ForAll(param_list, \
-        z3.Implies(pInitPre, PInitForm0)))
-    firstRule._update()
-    firstRule.mk_formula()
-    db.add_rule(firstRule)
-
-    secondRule = HornRule(z3.ForAll(param_list, \
-        z3.Implies(PInitForm0, PInitForm1)))
-    secondRule._update()
-    secondRule.mk_formula()
-    db.add_rule(secondRule)
-
-    thirdRule = HornRule(z3.ForAll(initvars, \
+    thirdRule = HornRule(z3.ForAll(allvars, \
         z3.Implies(z3.And(PInitForm1, init), InvPre)))
     thirdRule._update()
     thirdRule.mk_formula()
@@ -135,11 +120,25 @@ def mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, n
     fourRule.mk_formula()
     db.add_rule(fourRule)
 
-    fifthRule = HornRule(z3.ForAll(propvars, \
-        z3.Implies(z3.And(InvPre, z3.Not(prop)), z3.BoolVal(False))))
+    fifthRule = HornRule(z3.ForAll(allvars, \
+        z3.Implies(z3.And(InvPre, prop), z3.BoolVal(False))))  #TODO: check if inverted?? #z3.Not(prop))
     fifthRule._update()
     fifthRule.mk_formula()
     db.add_rule(fifthRule)
+
+    ### NOTE: FIRST 2 Rules MUST be added in this order, b/c blocking loop has HACKY ordering (i.e. db2._rules[-1] in l.673 of horn_hacking)
+
+    secondRule = HornRule(z3.ForAll(param_list, \
+        z3.Implies(PInitForm0, PInitForm1)))
+    secondRule._update()
+    secondRule.mk_formula()
+    db.add_rule(secondRule)
+
+    firstRule = HornRule(z3.ForAll(param_list, \
+    z3.Implies(pInitPre, PInitForm0)))
+    firstRule._update()
+    firstRule.mk_formula()
+    db.add_rule(firstRule)
 
     db.seal()
     #from horn_hacking import print_chc_smt
