@@ -338,7 +338,7 @@ class HornClauseDb(object):
         for r in self._rules:
             rels.extend(r.used_rels())
         for q in self._queries:
-            rels.extend(r.used_rels())
+            rels.extend(r.used_rels()) #NOTE: check this?
         self._rels_set = frozenset(rels)
         self._sealed = True
 
@@ -612,13 +612,14 @@ def print_chc_smt(horndb):
     print(fp2.sexpr())
     print("(check-sat)\n(get-proof)\n(get-model)\n(exit)")
 
-def main(initialDb=None):
+def main(initialDb=None, newPars=None, num_iter=10):
     env = pysmt.environment.get_env()
     mgr = env.formula_manager
     converter = pyz3.Z3Converter(env, z3.get_ctx(None))
 
     constONE = mgr.Int(1)
-    newPars=[mgr.Symbol('U', pysmt.typing.REAL)]
+    if not newPars:
+        newPars = [mgr.Symbol('U', pysmt.typing.REAL)]
     newParsZ3 = [converter.convert(param) for param in newPars]
 
     if initialDb:
@@ -657,7 +658,7 @@ def main(initialDb=None):
 
     unBlocked = z3.BoolVal(True)
     c = 0
-    while c < 10:
+    while c < num_iter:
         rules = [r.mk_formula() for r in db2.get_rules()]
         print_chc_smt(db2)
         # SOLVE
@@ -669,7 +670,7 @@ def main(initialDb=None):
         if res == z3.unsat:
             compBlockInit = extractPob(db2)
             unBlocked = z3.And(unBlocked, compBlockInit)
-            db2._rules[-1]._body.append(compBlockInit)
+            db2._rules[-1]._body.append(compBlockInit)  #db2._rules[-1] is FIRST rule
             db2._rules[-1]._formula = None
             db2._rules[-1].mk_formula()
             c = c + 1
