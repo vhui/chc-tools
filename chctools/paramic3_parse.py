@@ -53,7 +53,7 @@ def main():
     trvars, tr = parse_formula(TRPATH)
     propvars, prop = parse_formula(PROPPATH)
 
-    """allvar_names = set()
+    allvar_names = set()
     allvars = []
     for var in initvars:
         if var.decl().name() not in allvar_names:
@@ -66,7 +66,7 @@ def main():
     for var in propvars:
         if var.decl().name() not in allvar_names:
             allvar_names.add(var.decl().name())
-            allvars.append(var)"""
+            allvars.append(var)
 
     pre_post = {}
     prevars = []
