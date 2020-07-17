@@ -91,7 +91,7 @@ def main():
     do_blocking(pinitDb, newPars=parsymbols)
     
 
-def mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, name='initDb', param_list=[z3.Const('U', z3.RealSort())], pInitPre=z3.BoolVal(True)):
+def mk_pinit_db(allvars, prevars, postvars, init, tr, prop, name='initDb', param_list=[z3.Const('U', z3.RealSort())], pInitPre=z3.BoolVal(True)):
     from horn_hacking import HornClauseDb, HornRule
     db = HornClauseDb(name)
     #db.load_from_fp(fp, queries)
@@ -114,7 +114,7 @@ def mk_pinit_db(initvars, trvars, propvars, prevars, postvars, init, tr, prop, n
     thirdRule.mk_formula()
     db.add_rule(thirdRule)
 
-    fourRule = HornRule(z3.ForAll(trvars, \
+    fourRule = HornRule(z3.ForAll(allvars, \
         z3.Implies(z3.And(InvPre, tr), InvPost)))
     fourRule._update()
     fourRule.mk_formula()
