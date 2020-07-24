@@ -121,7 +121,7 @@ def mk_pinit_db(allvars, prevars, postvars, init, tr, prop, name='initDb', param
     db.add_rule(fourRule)
 
     fifthRule = HornRule(z3.ForAll(allvars, \
-        z3.Implies(z3.And(InvPre, prop), z3.BoolVal(False))))  #TODO: check if inverted?? #z3.Not(prop))
+        z3.Implies(z3.And(InvPre, z3.Not(prop)), z3.BoolVal(False))))  #TODO: check if inverted?? #z3.Not(prop))
     fifthRule._update()
     fifthRule.mk_formula()
     db.add_rule(fifthRule)
