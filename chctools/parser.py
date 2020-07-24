@@ -105,7 +105,7 @@ class ChcRulesSmtLibParser(SmtLibZ3Parser):
         queries = []
         init = self.env.formula_manager.TRUE()
         trans = self.env.formula_manager.TRUE()
-
+        
         for cmd in self.get_command_generator(script):
             # Simply skip declarations and other commands...
             if type(cmd) == Rule:

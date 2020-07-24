@@ -296,17 +296,7 @@ class HornClauseDb(object):
 
     def add_rule(self, horn_rule):
         self._sealed = False
-        #if SMTLib desired:
-        if False: #horn_rule.is_query():
-            if self._simple_query and not horn_rule.is_simple_query():
-                query, rule = horn_rule.split_query()
-                self._rules.append(rule)
-                self._queries.append(query)
-            else:
-                self._queries.append(horn_rule)
-        else:
-            self._rules.append(horn_rule)
-        """#if FIXEDpoint desired:
+        #if FIXEDpoint desired:
         if horn_rule.is_query():
             if self._simple_query and not horn_rule.is_simple_query():
                 query, rule = horn_rule.split_query()
@@ -315,7 +305,7 @@ class HornClauseDb(object):
             else:
                 self._queries.append(horn_rule)
         else:
-            self._rules.append(horn_rule)"""
+            self._rules.append(horn_rule)
 
     def get_rels(self):
         self.seal()
@@ -338,7 +328,7 @@ class HornClauseDb(object):
         for r in self._rules:
             rels.extend(r.used_rels())
         for q in self._queries:
-            rels.extend(r.used_rels()) #NOTE: check this?
+            rels.extend(q.used_rels())
         self._rels_set = frozenset(rels)
         self._sealed = True
 
@@ -537,19 +527,19 @@ def replace_func(rule, Ulist):
     body = rule._body
     for i in range(len(body)):
         f = body[i]
-        if z3.is_app(f) and f.decl() in rule._rels:  # f.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+        if z3.is_app(f) and f.decl() in rule._rels and f.decl().name() != "simple!!query":  # f.decl().kind() == z3.Z3_OP_UNINTERPRETED:
             #f is FUNCTION
             arglist = [f.arg(i) for i in range(f.num_args())]
             arglist.extend(Ulist) #add Ulist to arglist
-            fNew = z3.Function(f.decl().name() + 'New', *([arg.sort() for arg in arglist] + [z3.BoolSort()]))
+            fNew = z3.Function(f.decl().name(), *([arg.sort() for arg in arglist] + [z3.BoolSort()]))
             rels.append(fNew)
             body[i] = fNew(*arglist)
     
     h = rule._head
-    if z3.is_app(h) and h.decl() in rule._rels:
+    if z3.is_app(h) and h.decl() in rule._rels and h.decl().name() != "simple!!query":
         arglist = [h.arg(i) for i in range(h.num_args())]
         arglist.extend(Ulist) #add Ulist to arglist
-        hNew = z3.Function(h.decl().name() + 'New', *([arg.sort() for arg in arglist] + [z3.BoolSort()]))
+        hNew = z3.Function(h.decl().name(), *([arg.sort() for arg in arglist] + [z3.BoolSort()]))
         rels.append(hNew)
         rule._head = hNew(*arglist)
         #z3.substitute(h, (h.decl(), hdnew))
@@ -561,47 +551,69 @@ def replace_func(rule, Ulist):
 #############################################################################
 
 # wrapper to solve CHC constraints and extract result
-def solve_horn(chc, pp=False, q3=False, max_unfold=10, verbosity=0, debug=False):
-    z3.set_param(verbose=verbosity)
+def solve_horn_fp(horndb, inLemmas=None, pp=False, q3=False, max_unfold=10, verbosity=0, debug=False):
 
     if debug:
-        z3.set_option('fp.spacer.trace_file', 'spacer.log')
         z3.enable_trace('spacer_progress')
     else:
         z3.disable_trace('spacer_progress')
+    
+    spFp = z3.Fixedpoint()
+    horndb.mk_fixedpoint(fp=spFp)
+    spFp.set('print_fixedpoint_extensions', True)
+    spFp.set('engine', 'spacer')
+    spFp.set('spacer.trace_file', 'spacer.log')
 
-    s = z3.SolverFor('HORN')
-    s.set('engine', 'spacer')
-    s.set('spacer.order_children', 2)
-    s.set('xform.subsumption_checker', False)  #is this okay?
+    spFp.set('spacer.order_children', 2)
+    spFp.set('xform.subsumption_checker', False)
+
     if not pp:
-        s.set('xform.inline_eager', False)
-        s.set('xform.inline_linear', False)
-        s.set('xform.slice', False)
+        spFp.set('xform.inline_eager', False)
+        spFp.set('xform.inline_linear', False)
+        spFp.set('xform.slice', False)
 
     if max_unfold > 0:
-        s.set('spacer.max_level', max_unfold)
+        spFp.set('spacer.max_level', max_unfold)
 
     if q3:
         # allow quantified variables in pobs
-        s.set('spacer.ground_pobs', False)
+        spFp.set('spacer.ground_pobs', False)
         # enable quantified generalization
-        s.set('spacer.q3.use_qgen', True)
+        spFp.set('spacer.q3.use_qgen', True)
 
-    # add constraints to solver
-    s.add(chc)
+    if inLemmas:
+        #add lemmas with add_cover
+        for rel in inLemmas:
+            relLemmas = inLemmas[rel]
+            for lvl in relLemmas:
+                spFp.add_cover(lvl, rel, relLemmas[lvl])
+
     if verbosity > 0:
-        print(s.sexpr())
-    # run solver
-    res = s.check()
-    # extract model or proof
-    answer = None
-    if res == z3.sat:
-        answer = s.model()
-    elif res == z3.unsat:
-        answer = None #s.proof()
-    #import pdb; pdb.set_trace()
-    return res, answer
+        print(spFp.sexpr())
+
+    q = horndb.get_queries()[0] #NOTE: assume EXACTLY 1 query exists in spFp
+    fml = q.mk_query()
+    res = spFp.query(fml)
+    if res == z3.unsat:
+        ans = None
+    elif res == z3.sat:
+        ans  = spFp.get_answer()
+
+    stats = spFp.statistics()
+
+    #extract lemmas with cover_delta
+    allRels = list(horndb.get_rels())
+    lemmasMap = {}
+    for rel in allRels:
+        relLemmas = {}
+        for lvl in range(spFp.get_num_levels(rel)): #TODO: CHECK if this works?
+            #relLemmas.append(spFp.get_cover_delta(lvl, rel))
+            relLemmas[lvl] = spFp.get_cover_delta(lvl, rel)
+        relLemmas[-1] = spFp.get_cover_delta(-1, rel) #inf lvl Lemmas
+        lemmasMap[rel] = relLemmas
+
+    return res, ans, lemmasMap
+    
 
 def print_chc_smt(horndb):
 #print new CHCs in SMT2 format
@@ -612,7 +624,18 @@ def print_chc_smt(horndb):
     print(fp2.sexpr())
     print("(check-sat)\n(get-proof)\n(get-model)\n(exit)")
 
-def main(initialDb=None, newPars=None, num_iter=10, invVars=None):
+def print_chc_fp(horndb):
+#print new CHCs in Fixedpoint format
+    fp2 = z3.Fixedpoint()
+    horndb.mk_fixedpoint(fp=fp2)
+    fp2.set('print_fixedpoint_extensions', True)
+    print('(set-logic ALL)')
+    print(fp2.sexpr())
+    for q in horndb.get_queries():
+        fml = q.mk_query()
+        print('(query {})\n'.format(fml.sexpr()))
+
+def main(initialDb=None, newPars=None, num_iter=10):
     env = pysmt.environment.get_env()
     mgr = env.formula_manager
     converter = pyz3.Z3Converter(env, z3.get_ctx(None))
@@ -630,11 +653,11 @@ def main(initialDb=None, newPars=None, num_iter=10, invVars=None):
         #print(db2._rels)
         #modify_init_rule(db2)
 
-    def extractPob(pinitDb):
+    def extractPob():
         #LOOP this
         #Track symbols: new params to Spacer placeholder
         #substitute (placeholder -> param) in extracted pobs
-        pinitRel = pinitDb.get_rel('pInit')
+        pinitRel = db2.get_rel('pInit')
         #pobF = io.StringIO("(and (= pInit_1_n 1) (< pInit_0_n 0.0))")
         with open("spacer.log", "r") as f:
             lines = f.readlines()
@@ -655,42 +678,33 @@ def main(initialDb=None, newPars=None, num_iter=10, invVars=None):
         pobToBlock = z3.simplify(z3.Not(unblockedPobZ3)) #TODO: simplify necessary?
         return pobToBlock
 
-
     unBlocked = z3.BoolVal(True)
     c = 0
+    lemmas = None
     while c < num_iter:
-        rules = [r.mk_formula() for r in db2.get_rules()]
-        print_chc_smt(db2)
+        #rules = [r.mk_formula() for r in db2.get_rules()]
+        print_chc_fp(db2) 
         # SOLVE
-        z3.set_param(proof=True)
-        z3.set_param(model=True)
-        #Modify pInit base here!
-        res, answer = solve_horn(rules, verbosity=0, debug=True, max_unfold=1000)
+        #z3.set_param(proof=True)
+        #z3.set_param(model=True)
 
-        if res == z3.unsat:
-            compBlockInit = extractPob(db2)
-            unBlocked = z3.And(unBlocked, compBlockInit)
-            db2._rules[-1]._body.append(compBlockInit)  #db2._rules[-1] is FIRST rule
+        #Modify pInit base here!
+        res, answer, lemmasOut = solve_horn_fp(db2, inLemmas=lemmas, verbosity=0, debug=True, max_unfold=1000)
+
+        if res == z3.sat:
+            blockInit = extractPob()
+            unBlocked = z3.And(unBlocked, blockInit)
+            db2._rules[-1]._body.append(blockInit)  #db2._rules[-1] is FIRST rule
             db2._rules[-1]._formula = None
             db2._rules[-1].mk_formula()
             c = c + 1
-        elif res == z3.sat:
+            lemmas = lemmasOut #change?
+
+        elif res == z3.unsat:
             print(answer)
             break
-            """inv = answer[0]
-            invRel = db2.get_rel('Inv')
-            param_substs = {}
-            for i in range(len(invVars)):
-                param_substs[invRel._pysmt_sig[i]] = converter.back(invVars[i])
-            #maybe target should be pysmt symbol instead?
-            substituter = pysmt.substituter.MGSubstituter(env) #TODO: check this?
-            substitutedInv = substituter.substitute(inv, param_substs)
-            invZ3 = converter.convert(substitutedInv)
-            return invZ3"""
     
     return 0
-    
-
 
 if __name__ == '__main__':
     sys.exit(main())
