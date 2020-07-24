@@ -9,6 +9,7 @@ import pysmt.typing as pytype
 from pysmt.smtlib.parser import SmtLibParser
 
 BASE_PATH = "/home/turingdreams/Desktop/fmcad2013/fmcad13/benchmarks/paramIC3/"
+#BASE_PATH = "/home/turingdreams/Documents/Research_UofT/chc-tools/chctools/"
 PARAM_SUF = "parameters.txt"
 INIT_SUF = "init.smt2"
 PROP_SUF = "property.smt2"
@@ -72,7 +73,7 @@ def main():
     prevars = []
     postvars = []
     for var in trvars:
-        if var.decl().name().endswith(".next"):
+        if var.decl().name().endswith(".next") and var.decl().name()[:len(var.decl().name())-5] not in parnames:  #and var.decl().name().rstrip(".next") not in parnames:
             postname = var.decl().name()
             pre_post[var.decl().name()[:len(postname)-5]] = var
         else:
@@ -103,25 +104,25 @@ def mk_pinit_db(allvars, prevars, postvars, init, tr, prop, name='initDb', param
     PInitForm1 = pInit(*(param_list + [1]))
 
     Inv = z3.Function('Inv', *([p.sort() for p in prevars] + [z3.BoolSort()]))
-    InvPre = Inv(*prevars)
+    InvPre = Inv(*prevars) #TODO: + param_list??
     InvPost = Inv(*postvars)
 
     ########################
 
     thirdRule = HornRule(z3.ForAll(allvars, \
-        z3.Implies(z3.And(PInitForm1, init), InvPre)))
+        z3.Implies(z3.And(PInitForm1, z3.simplify(init)), InvPre)))
     thirdRule._update()
     thirdRule.mk_formula()
     db.add_rule(thirdRule)
 
     fourRule = HornRule(z3.ForAll(allvars, \
-        z3.Implies(z3.And(InvPre, tr), InvPost)))
+        z3.Implies(z3.And(InvPre, z3.simplify(tr)), InvPost)))
     fourRule._update()
     fourRule.mk_formula()
     db.add_rule(fourRule)
 
     fifthRule = HornRule(z3.ForAll(allvars, \
-        z3.Implies(z3.And(InvPre, prop), z3.BoolVal(False))))  #TODO: check if inverted?? #z3.Not(prop))
+        z3.Implies(z3.And(InvPre, z3.simplify(z3.Not(prop))), z3.BoolVal(False))))  #TODO: check if inverted?? #z3.Not(prop))
     fifthRule._update()
     fifthRule.mk_formula()
     db.add_rule(fifthRule)

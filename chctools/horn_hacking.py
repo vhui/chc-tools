@@ -612,7 +612,7 @@ def print_chc_smt(horndb):
     print(fp2.sexpr())
     print("(check-sat)\n(get-proof)\n(get-model)\n(exit)")
 
-def main(initialDb=None, newPars=None, num_iter=10):
+def main(initialDb=None, newPars=None, num_iter=10, invVars=None):
     env = pysmt.environment.get_env()
     mgr = env.formula_manager
     converter = pyz3.Z3Converter(env, z3.get_ctx(None))
@@ -677,6 +677,16 @@ def main(initialDb=None, newPars=None, num_iter=10):
         elif res == z3.sat:
             print(answer)
             break
+            """inv = answer[0]
+            invRel = db2.get_rel('Inv')
+            param_substs = {}
+            for i in range(len(invVars)):
+                param_substs[invRel._pysmt_sig[i]] = converter.back(invVars[i])
+            #maybe target should be pysmt symbol instead?
+            substituter = pysmt.substituter.MGSubstituter(env) #TODO: check this?
+            substitutedInv = substituter.substitute(inv, param_substs)
+            invZ3 = converter.convert(substitutedInv)
+            return invZ3"""
     
     return 0
     

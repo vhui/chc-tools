@@ -585,7 +585,7 @@ def solve_horn_fp(horndb, inLemmas=None, pp=False, q3=False, max_unfold=10, verb
         #add lemmas with add_cover
         for rel in inLemmas:
             relLemmas = inLemmas[rel]
-            for lvl in range(len(relLemmas)):
+            for lvl in relLemmas:
                 spFp.add_cover(lvl, rel, relLemmas[lvl])
 
     if verbosity > 0:
@@ -605,11 +605,11 @@ def solve_horn_fp(horndb, inLemmas=None, pp=False, q3=False, max_unfold=10, verb
     allRels = list(horndb.get_rels())
     lemmasMap = {}
     for rel in allRels:
-        relLemmas = []
+        relLemmas = {}
         for lvl in range(spFp.get_num_levels(rel)): #TODO: CHECK if this works?
-            relLemmas.append(spFp.get_cover_delta(lvl, rel))
-            #relLemmas[lvl] = spFp.get_cover_delta(lvl, rel)
-        #relLemmas[-1] = spFp.get_cover_delta(-1, rel) #inf lvl Lemmas
+            #relLemmas.append(spFp.get_cover_delta(lvl, rel))
+            relLemmas[lvl] = spFp.get_cover_delta(lvl, rel)
+        relLemmas[-1] = spFp.get_cover_delta(-1, rel) #inf lvl Lemmas
         lemmasMap[rel] = relLemmas
 
     return res, ans, lemmasMap
