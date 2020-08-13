@@ -48,11 +48,11 @@ def main():
             all_vars = script.get_declared_symbols()
             all_vars = [converter.convert(var) for var in all_vars]
             formula = converter.convert(script.get_last_formula())
-        return (all_vars, formula)
+        return (all_vars, formula, script.get_last_formula())
 
-    initvars, init = parse_formula(INITPATH)
-    trvars, tr = parse_formula(TRPATH)
-    propvars, prop = parse_formula(PROPPATH)
+    initvars, init, initsmt = parse_formula(INITPATH)
+    trvars, tr, trsmt = parse_formula(TRPATH)
+    propvars, prop, propsmt = parse_formula(PROPPATH)
 
     allvar_names = set()
     allvars = []
@@ -73,27 +73,70 @@ def main():
     prevars = []
     postvars = []
     for var in trvars:
-        if var.decl().name().endswith(".next") and var.decl().name()[:len(var.decl().name())-5] not in parnames:  #and var.decl().name().rstrip(".next") not in parnames:
+        if var.decl().name().endswith(".next"): #and var.decl().name()[:len(var.decl().name())-5] not in parnames: 
             postname = var.decl().name()
             pre_post[var.decl().name()[:len(postname)-5]] = var
         else:
-            prevars.append(var)
+            None
+            #prevars.append(var)
 
-    for var in prevars:
+    for var in trvars:
+        if var.decl().name() in pre_post:
+            prevars.append(var)
+            postvars.append(pre_post[var.decl().name()])
+
+    """for var in prevars:
         if var.decl().name() in pre_post:
             postvars.append(pre_post[var.decl().name()])
         else:
-            postvars.append(var)
+            #postvars.append(z3.Const(var.decl().name() + ".next", var.sort()))
+            postvars.append(var)"""
 
     #allvars.update(initvars); allvars.update(trvars); allvars.update(propvars)
-    pinitDb = mk_pinit_db(allvars, prevars, postvars, init, tr, prop, param_list=parsymbolsZ3)
+    pinitDb, invPre, invPost, _pinit1 = mk_pinit_db(allvars, prevars, postvars, init, tr, prop, param_list=parsymbolsZ3)
 
-    from horn_hacking import main as do_blocking
-    do_blocking(pinitDb, newPars=parsymbols)
+    from horn_hacking_lemmas import main as do_blocking
+    ans = do_blocking(pinitDb, newPars=parsymbols, num_iter=100) #invVars=prevars
+    #check invariant model
+    if ans:
+        inv = ans.eval(invPre)
+        invprime = ans.eval(invPost)
+        pinit = ans.eval(_pinit1)
+
+        begin_r = z3.solve(z3.And(init, z3.Not(inv))) #TODO: should validate w/ pInit
+        final_r = z3.solve(z3.And(inv, z3.Not(prop)))
+        induc_r = z3.solve(z3.And(inv, z3.simplify(tr), z3.Not(invprime)))
+
+        print("")
+        print("")
+        print("")
+        print(inv)
+        print("")
+        print("PInit:\n")
+        print(pinit)
+        print("")
+    else:
+        print("Did not solve with 100 iterations.")
+    
+    """print(invprime)
+    print(z3.simplify(tr))
+    #simptrsmt = converter.back(z3.simplify(tr))
+    induc = z3.And(inv, z3.simplify(tr), z3.Not(invprime))
+    inducsmt = converter.back(induc)
+
+    from pysmt.rewritings import conjunctive_partition
+    from pysmt.shortcuts import get_unsat_core
+    clauses = conjunctive_partition(inducsmt)
+    ucore = get_unsat_core(clauses)
+    print("UNSAT-Core size '%d'" % len(ucore))
+    for f in ucore:
+        print(converter.convert(f))
+        #print(f.serialize())"""
+
     
 
 def mk_pinit_db(allvars, prevars, postvars, init, tr, prop, name='initDb', param_list=[z3.Const('U', z3.RealSort())], pInitPre=z3.BoolVal(True)):
-    from horn_hacking import HornClauseDb, HornRule
+    from horn_hacking_lemmas import HornClauseDb, HornRule
     db = HornClauseDb(name)
     #db.load_from_fp(fp, queries)
     db._sealed = False
@@ -144,7 +187,7 @@ def mk_pinit_db(allvars, prevars, postvars, init, tr, prop, name='initDb', param
     db.seal()
     #from horn_hacking import print_chc_smt
     #print_chc_smt(db)
-    return db
+    return db, InvPre, InvPost, PInitForm1
 
 
 

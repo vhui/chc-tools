@@ -450,12 +450,20 @@ def copy_horn_db_mk_pinit(origdb, newParList=[z3.Const('U', z3.RealSort())], pIn
         if is_rule_pre(r):
             if len(newParList) > 0:
                 swapped = swap_const_U(r, copy.deepcopy(newParList[0]))
+                #swapped = swap_const_Ulist(r, copy.deepcopy(newParList))
                 if not swapped:
                     print("Could not swap in U.")
                     return
             
             r._rels.append(pInit)
             r._body.append(PInitForm1)
+            r._formula = r.mk_formula()
+
+    #NOT Correct yet!
+    for r in db._rules:
+        if swapped < len(newParList) and not is_rule_pre(r): #and is_rule_body(r)
+            parSuffix = newParList[swapped:]
+            swapped = swapped + swap_const_Ulist(r, copy.deepcopy(parSuffix))
             r._formula = r.mk_formula()
 
     secondRule = HornRule(z3.ForAll(newParList, \
@@ -515,6 +523,65 @@ def swap_const_U(rule, param):
             body[i] = val0 > val1
             return True
     return False
+
+def swap_const_Ulist(rule, params):
+    #flips first seen constant to U
+    body = rule._body
+    def is_num_val(val):
+        if z3.is_const(val) \
+            and (val.decl().kind() == z3.Z3_OP_ANUM or val.decl().kind() == z3.Z3_OP_AGNUM): #i.e. is fixed value!
+            #Otherwise: "and val.decl().kind() != z3.Z3_OP_UNINTERPRETED:""
+                return True
+        if val.decl().kind() == z3.Z3_OP_TO_REAL or val.decl().kind() == z3.Z3_OP_TO_INT:
+            return True
+        return False
+
+    swapped = 0  #-> use J instead!!
+    for j in range(len(params)):
+        for i in range(len(body)): #TODO: Remove Assumption: HACKY SPECIAL CASES #reversed to swap diff
+            e = body[i]
+            if z3.is_expr(e) and e.decl().kind() == z3.Z3_OP_EQ:
+                #for j in range(e.num_args()):
+                val0 = params[j] if is_num_val(e.arg(0)) else e.arg(0)
+                val1 = params[j] if is_num_val(e.arg(1)) else e.arg(1)
+                body[i] = val0 == val1
+                if is_num_val(e.arg(0)):
+                    swapped = swapped + 1 #success
+                if is_num_val(e.arg(1)):
+                    swapped = swapped + 1 #success
+            elif z3.is_expr(e) and e.decl().kind() == z3.Z3_OP_LE:
+                val0 = params[j] if is_num_val(e.arg(0)) else e.arg(0)
+                val1 = params[j] if is_num_val(e.arg(1)) else e.arg(1)
+                body[i] = val0 <= val1
+                if is_num_val(e.arg(0)):
+                    swapped = swapped + 1 #success
+                if is_num_val(e.arg(1)):
+                    swapped = swapped + 1 #success
+            elif z3.is_expr(e) and e.decl().kind() == z3.Z3_OP_GE:
+                val0 = params[j] if is_num_val(e.arg(0)) else e.arg(0)
+                val1 = params[j] if is_num_val(e.arg(1)) else e.arg(1)
+                body[i] = val0 >= val1
+                if is_num_val(e.arg(0)):
+                    swapped = swapped + 1 #success
+                if is_num_val(e.arg(1)):
+                    swapped = swapped + 1 #success
+            elif z3.is_expr(e) and e.decl().kind() == z3.Z3_OP_LT:
+                val0 = params[j] if is_num_val(e.arg(0)) else e.arg(0)
+                val1 = params[j] if is_num_val(e.arg(1)) else e.arg(1)
+                body[i] = val0 < val1
+                if is_num_val(e.arg(0)):
+                    swapped = swapped + 1 #success
+                if is_num_val(e.arg(1)):
+                    swapped = swapped + 1 #success
+            elif z3.is_expr(e) and e.decl().kind() == z3.Z3_OP_GT:
+                val0 = params[j] if is_num_val(e.arg(0)) else e.arg(0)
+                val1 = params[j] if is_num_val(e.arg(1)) else e.arg(1)
+                body[i] = val0 > val1
+                if is_num_val(e.arg(0)):
+                    swapped = swapped + 1 #success
+                if is_num_val(e.arg(1)):
+                    swapped = swapped + 1 #success
+    return swapped
 
 
 def is_rule_pre(rule):
@@ -619,7 +686,7 @@ def main(initialDb=None, newPars=None, num_iter=10, invVars=None):
 
     constONE = mgr.Int(1)
     if not newPars:
-        newPars = [mgr.Symbol('U', pysmt.typing.REAL)]
+        newPars = [mgr.Symbol('U', pysmt.typing.REAL)] #, mgr.Symbol('U2', pysmt.typing.REAL)
     newParsZ3 = [converter.convert(param) for param in newPars]
 
     if initialDb:
@@ -676,7 +743,8 @@ def main(initialDb=None, newPars=None, num_iter=10, invVars=None):
             c = c + 1
         elif res == z3.sat:
             print(answer)
-            break
+            return answer
+
             """inv = answer[0]
             invRel = db2.get_rel('Inv')
             param_substs = {}

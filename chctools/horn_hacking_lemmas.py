@@ -277,6 +277,10 @@ class HornRelation(object):
             name = self._mk_lemma_arg_name(i)
             self._lemma_parser.cache.bind(name, symbol)
 
+    """def pysmt_parse_z3(self, z3in):
+        self._mk_lemma_parser()
+        return self._lemma_parser.get_expression(tokens)"""
+
     def pysmt_parse_lemma(self, input):
         self._mk_lemma_parser()
         tokens = Tokenizer(input, interactive = False)
